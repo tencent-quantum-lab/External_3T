@@ -34,6 +34,8 @@ python setup.py install
 cd ../../..
 ```
 
+Please ensure that the following commands are valid inside your 3T conda environment: `gmx`, `wget`, `unzip`, and `packmol`.
+
 At this point, you are ready to run a test example.
 
 For paper example on bulk electrolyte reduction, run the command:

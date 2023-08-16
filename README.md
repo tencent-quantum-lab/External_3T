@@ -36,6 +36,13 @@ cd ../../..
 
 Please ensure that the following commands are valid inside your 3T conda environment: `gmx`, `wget`, `unzip`, and `packmol`.
 
+Please also ensure that your VASP installation is valid, and that the correct command is utilized in the file `utils/calculator_3T_VASP.py` function `run_VASP`. For Tencent TEFS VASP 6.2.1 system, the command we use to make external system call to the VASP software is:
+```
+os.system('nohup mpirun -n '+n_gpu+' --allow-run-as-root ~/software/vasp.6.2.1/bin/vasp_std')
+```
+Please change this Python system call into something specific to your VASP computing environment.
+
+
 At this point, you are ready to run a test example.
 
 For paper example on bulk electrolyte reduction, run the command:

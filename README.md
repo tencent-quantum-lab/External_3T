@@ -34,15 +34,16 @@ python setup.py install
 cd ../../..
 ```
 
-At this point, you are ready to run a test example. Run the command:
-```
-python run_3T_interface.py
-```
-This will load up the config file `configs/example_Li100_EC_DMC_VC_v8.json` and other necessary files referred to by the config file.
+At this point, you are ready to run a test example.
 
-If somehow VASP fails because of convergence issue in the middle of a cycle (this is different from failure starting from the very beginning because of bad VASP settings!), use this command to restart the cycle where VASP convergence fails:
+For paper example on bulk electrolyte reduction, run the command:
 ```
-python continue_run_3T_interface.py
+python randomize_3T_bulk_electrolyte_reduction.py
+```
+
+For paper example on bulk electrolyte oxidation, run the command:
+```
+python randomize_3T_bulk_electrolyte_oxidation.py
 ```
 
 ## Tracking the progress

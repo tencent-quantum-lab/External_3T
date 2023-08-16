@@ -8,7 +8,7 @@ Start by setting up your conda environment and Python dependencies:
 ```
 conda create --name 3T python=3.8
 conda activate 3T
-conda install --file requirements.txt -c pytorch-gpu -c conda-forge -c rdkit
+conda install --file requirements.txt -c pytorch -c conda-forge -c rdkit
 ```
 Install the conda dependencies separately if necessary.
 

@@ -10,7 +10,7 @@ conda create --name 3T python=3.8
 conda activate 3T
 conda install --file requirements.txt -c pytorch -c conda-forge -c rdkit
 ```
-Install the conda dependencies separately if necessary.
+<b>Install the conda dependencies separately if necessary. </b>
 
 In addition to the python dependencies in `requirements.txt`, you should also ensure that Gromacs is properly installed. We suggest installing gromacs from source. For example, follow these download and installation instructions: <br />
 &ensp;https://manual.gromacs.org/documentation/2021.3/download.html <br />

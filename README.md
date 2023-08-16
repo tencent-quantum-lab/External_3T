@@ -1,0 +1,53 @@
+# VASP_3T_multi
+
+This repository allows the usage of 3T structure optimization / energy minimization algorithm on solid surface/liquid (multi molecule) interface.
+
+## Quick Start
+
+Start by setting up your conda environment and Python dependencies:
+```
+conda create --name 3T python=3.8
+conda activate 3T
+conda install --file requirements.txt -c pytorch-gpu -c conda-forge -c rdkit
+```
+Install the conda dependencies separately if necessary.
+
+In addition to the python dependencies in `requirements.txt`, you should also ensure that Gromacs is properly installed. We suggest installing gromacs from source. For example, follow these download and installation instructions: <br />
+&ensp;https://manual.gromacs.org/documentation/2021.3/download.html <br />
+&ensp;https://manual.gromacs.org/2021.3/install-guide/index.html  <br />
+Or on CentOS, simply do: <br />
+```
+yum -y install gromacs
+```
+
+Ensure that the command `python` refers to the python library of your conda environment. This is not always the case. For example, this may not be true in centOS image in Tencent Cloud with VASP installed. In my case, I need to do:
+```
+conda activate 3T
+alias python='/opt/intel/oneapi/intelpython/latest/envs/3T/bin/python3.8'
+```
+
+Finally, after installing these python libraries and Gromacs, you should install the Gromacs-LAMMPS file format converter.
+```
+cd utils/Convert_Gromacs_LAMMPS/InterMol
+python setup.py build
+python setup.py install
+cd ../../..
+```
+
+At this point, you are ready to run a test example. Run the command:
+```
+python run_3T_interface.py
+```
+This will load up the config file `configs/example_Li100_EC_DMC_VC_v8.json` and other necessary files referred to by the config file.
+
+If somehow VASP fails because of convergence issue in the middle of a cycle (this is different from failure starting from the very beginning because of bad VASP settings!), use this command to restart the cycle where VASP convergence fails:
+```
+python continue_run_3T_interface.py
+```
+
+## Tracking the progress
+On a separate terminal, you can track the progress of the cycles by checking the content of the log file `default.log`, which is updated in real-time for both the classical force field and VASP components of the structure minimization.
+
+## Contact
+
+Questions about this repository may be addressed to Jonathan Mailoa ( jpmailoa [AT] alum [DOT] mit [DOT] edu ).

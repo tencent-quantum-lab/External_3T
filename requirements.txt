@@ -1,0 +1,10 @@
+pytorch-gpu
+cudatoolkit
+numpy
+ase
+pymol-open-source
+rdkit
+bs4
+mechanize
+openbabel
+packmol

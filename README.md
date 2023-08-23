@@ -56,7 +56,7 @@ For paper example on bulk electrolyte oxidation, run the command:
 python randomize_3T_bulk_electrolyte_oxidation.py
 ```
 
-For trajectory analysis and result visualization of running results, please refer to the `Examplels` folder.
+For trajectory analysis and result visualization of running results, please refer to the `Examples` folder.
 
 ## Tracking the progress
 On a separate terminal, you can track the progress of the cycles by checking the content of the log file `default.log`, which is updated in real-time for both the classical force field and VASP components of the structure minimization.

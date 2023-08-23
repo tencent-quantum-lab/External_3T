@@ -26,7 +26,7 @@ conda activate 3T
 alias python='/opt/intel/oneapi/intelpython/latest/envs/3T/bin/python3.8'
 ```
 
-Finally, after installing these python libraries and Gromacs, you should install the Gromacs-LAMMPS file format converter.
+Finally, after installing these python libraries and Gromacs, you should install the Gromacs-LAMMPS file format converter. The InterMol library is taken from the InterMol Github page https://github.com/shirtsgroup/InterMol, but has been modified to fix some bugs related to Gromacs-LAMMPS file conversion (so using the original Github's code with 3T won't work).
 ```
 cd utils/Convert_Gromacs_LAMMPS/InterMol
 python setup.py build

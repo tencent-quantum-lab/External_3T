@@ -4,6 +4,7 @@ This repository allows the usage of 3T structure optimization / energy minimizat
 
 ## Quick Start
 
+### Install Conda Dependencies
 Start by setting up your conda environment and Python dependencies:
 ```
 conda create --name 3T python=3.8
@@ -12,6 +13,7 @@ conda install --file requirements.txt -c pytorch -c conda-forge -c rdkit
 ```
 <b>Install the conda dependencies separately if necessary. </b>
 
+### Install Gromacs
 In addition to the python dependencies in `requirements.txt`, you should also ensure that Gromacs is properly installed. We suggest installing gromacs from source. For example, follow these download and installation instructions: <br />
 &ensp;https://manual.gromacs.org/documentation/2021.3/download.html <br />
 &ensp;https://manual.gromacs.org/2021.3/install-guide/index.html  <br />
@@ -20,12 +22,14 @@ Or on CentOS, simply do: <br />
 yum -y install gromacs
 ```
 
+### Ensure Correct `python` Command
 Ensure that the command `python` refers to the python library of your conda environment. This is not always the case. For example, this may not be true in centOS image in Tencent Cloud with VASP installed. In my case, I need to do:
 ```
 conda activate 3T
 alias python='/opt/intel/oneapi/intelpython/latest/envs/3T/bin/python3.8'
 ```
 
+### Install Modified Version of InterMol
 Finally, after installing these python libraries and Gromacs, you should install the Gromacs-LAMMPS file format converter. The InterMol library is taken from the InterMol Github page https://github.com/shirtsgroup/InterMol, but has been modified to fix some bugs related to Gromacs-LAMMPS file conversion (so using the original Github's code with 3T won't work).<br />
 Note that InterMol is only used for preparing new 3T molecule data `GL_data` object. <b>Because this 3T codebase uses molecule force field caching, you do not need InterMol if you are working with just old molecules that you have already cached in your database. See `utils/process_molecule.py`.</b>
 ```
@@ -35,6 +39,7 @@ python setup.py install
 cd ../../..
 ```
 
+### Miscallenous
 Please ensure that the following commands are valid inside your 3T conda environment: `gmx`, `wget`, `unzip`, and `packmol`.
 
 Please also ensure that your VASP installation is valid, and that the correct command is utilized in the file `utils/calculator_3T_VASP.py` function `run_VASP`. For Tencent TEFS VASP 6.2.1 system, the command we use to make external system call to the VASP software is:
@@ -44,6 +49,7 @@ os.system('nohup mpirun -n '+n_gpu+' --allow-run-as-root ~/software/vasp.6.2.1/b
 Please change this Python system call into something specific to your VASP computing environment.
 
 
+### Test Run
 At this point, you are ready to run a test example.
 
 For paper example on bulk electrolyte reduction, run the command:

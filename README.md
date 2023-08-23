@@ -31,7 +31,7 @@ alias python='/opt/intel/oneapi/intelpython/latest/envs/3T/bin/python3.8'
 
 ### Install Modified Version of InterMol
 Finally, after installing these python libraries and Gromacs, you should install the Gromacs-LAMMPS file format converter. The InterMol library is taken from the InterMol Github page https://github.com/shirtsgroup/InterMol, but has been modified to fix some bugs related to Gromacs-LAMMPS file conversion (so using the original Github's code with 3T won't work).<br />
-Note that InterMol is only used for preparing new 3T molecule data `GL_data` object. <b>Because this 3T codebase uses molecule force field caching, you do not need InterMol if you are working with just old molecules that you have already cached in your database. See `utils/process_molecule.py`.</b>
+Note that InterMol is only used for preparing new 3T molecule data `GL_data` object. <b>Because this 3T codebase uses molecule force field caching, you do not need InterMol if you are working with just old molecules that you have already cached in your database.</b> See `utils/process_molecule.py` function `convert_molecule`.
 ```
 cd utils/Convert_Gromacs_LAMMPS/InterMol
 python setup.py build

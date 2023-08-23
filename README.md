@@ -40,7 +40,7 @@ cd ../../..
 ```
 
 ### Install and Integrate VASP
-Please ensure that your VASP installation is valid, and that the correct command is utilized in the file `utils/calculator_3T_VASP.py` function `run_VASP`. For Tencent TEFS VASP 6.2.1 system, the command we use to make external system call to the VASP software is:
+Assuming that you are using this codebase for its VASP-related functionalities, please ensure that your VASP installation is valid, and that the correct command is utilized in the file `utils/calculator_3T_VASP.py` function `run_VASP`. For Tencent TEFS VASP 6.2.1 system, the command we use to make external system call to the VASP software is:
 ```
 os.system('nohup mpirun -n '+n_gpu+' --allow-run-as-root ~/software/vasp.6.2.1/bin/vasp_std')
 ```

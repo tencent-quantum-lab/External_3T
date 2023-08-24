@@ -21,7 +21,7 @@ def main(config_json):
 
 for repeat in range(10):
     # Read template
-    tag = 'BigCube_EC_Dimerization'
+    tag = 'Electrolyte_Oxidation'
     template = open('configs/'+tag+'_template.json','r').read()
 
     # Prepare random config file

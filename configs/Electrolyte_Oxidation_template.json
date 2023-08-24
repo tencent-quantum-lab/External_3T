@@ -1,6 +1,6 @@
 [
- {"lattice_poscar" : {"file" : "input/BigCube_EC_Dimerization/POSCAR_BigCube_Li$$Li$$.vasp",
-                      "override" : "input/BigCube_EC_Dimerization/BigCube_movable_charge_Li$$Li$$.override"},
+ {"lattice_poscar" : {"file" : "input/Electrolyte_Oxidation/POSCAR_BigCube_Li$$Li$$.vasp",
+                      "override" : "input/Electrolyte_Oxidation/BigCube_movable_charge_Li$$Li$$.override"},
   "molecule_xyz" : [{"file" : "input/EC.xyz",
                                 "count" : $$EC$$},
                               {"file" : "input/DMC.xyz",
@@ -40,9 +40,9 @@
   "out_tag" : "FF_step5",
   "print_freq" : 1},
 
- {"lattice_poscar" : {"file" : "input/BigCube_EC_Dimerization/POSCAR_BigCube_Li$$Li$$.vasp",
-                      "override" : "input/BigCube_EC_Dimerization/BigCube_movable_charge_Li$$Li$$.override",
-                      "VASP_template" : "templates/VASP/BigCube_EC_Dimerization/"},
+ {"lattice_poscar" : {"file" : "input/Electrolyte_Oxidation/POSCAR_BigCube_Li$$Li$$.vasp",
+                      "override" : "input/Electrolyte_Oxidation/BigCube_movable_charge_Li$$Li$$.override",
+                      "VASP_template" : "templates/VASP/Electrolyte_Oxidation/"},
   "mode" : "VASP",
   "n_epoch" : 50,
   "out_tag" : "VASP_step1",

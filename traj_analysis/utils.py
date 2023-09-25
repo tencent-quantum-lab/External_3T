@@ -9,6 +9,7 @@ import ase.io as sio
 from ase.data import covalent_radii
 from ase.neighborlist import NeighborList
 from ase.data import atomic_masses, chemical_symbols
+from ase.geometry import find_mic
 from networkx.algorithms import bipartite
 import networkx as nx
 from networkx.readwrite import json_graph
@@ -272,49 +273,115 @@ def ase2rdkit(atoms, charge=None, ignore_bondorder=False):
     return conn_mol
 
 
-def parse_bonds(atoms, charge=None, ignore_bondorder=False):
-    radius = 1.10
+def adjust_positions(atoms, a0, a1):
+    p0, p1 = atoms.positions[[a0, a1]]
+    d, p = find_mic(np.array([p1 - p0]), atoms.cell, atoms.pbc)
+    if p < atoms.get_distance(a0, a1):
+        atoms.positions[a1] = atoms.positions[a0] + d
+
+
+def parse_bond_order(bondpairs, rdkitmol, atoms):
+    _bondpairs = []
+    for tmp in bondpairs:
+        a, a2, _ = tmp
+        bond = rdkitmol.GetBondBetweenAtoms(a, a2)
+        if hasattr(bond, 'GetBondType'):
+            bond_type = bond.GetBondType().name
+        elif 3 in atoms.numbers[[a, a2]]:
+            bond_type = None
+        else:
+            bond_type = 'SINGLE'
+            edmol = Chem.EditableMol(rdkitmol)
+            edmol.AddBond(a,a2,order=Chem.rdchem.BondType.SINGLE)
+            rdkitmol = edmol.GetMol()
+            # rdkitmol.GetAtomWithIdx(a).SetFormalCharge(0)
+            # rdkitmol.GetAtomWithIdx(a2).SetFormalCharge(0)
+            # rdkitmol.UpdatePropertyCache(strict=False)
+            # _infer_bo_and_charges(rdkitmol)
+            # Chem.SanitizeMol(rdkitmol)
+            # bond = rdkitmol.GetBondBetweenAtoms(a, a2)
+            # dist = atoms.get_distance(a, a2, True)
+            # bond.SetProp('bondNote', '%.3f'%dist)
+            # if hasattr(rdkitmol, '__sssAtoms'):
+            #     rdkitmol.__sssAtoms.extend([a, a2])
+            # else:
+            #     rdkitmol.__sssAtoms = [a, a2]
+        if bond_type:
+            tmp += (bond_type,)
+            _bondpairs.append(tmp)
+    return _bondpairs, rdkitmol
+
+
+def parse_bonds(atoms, charge=None, ignore_bondorder=False, revert_pbc=False):
+    radius = 1.20
     cutoffs = radius * covalent_radii[atoms.numbers]
     cutoffs[(atoms.numbers == 3).nonzero()[0]] = 0
-    nl = NeighborList(cutoffs=cutoffs, skin=0.3, self_interaction=False)
+    nl = NeighborList(cutoffs=cutoffs, skin=0.0, 
+                      self_interaction=False, sorted=True)
     nl.update(atoms)
-    rdkitmol = ase2rdkit(atoms, charge, ignore_bondorder)
 
     bondpairs = []
     for a in range(len(atoms)):
         indices, offsets = nl.get_neighbors(a)
         _tmp = []
         for a2, offset in zip(indices, offsets):
-            bond = rdkitmol.GetBondBetweenAtoms(a, int(a2))
-            if hasattr(bond, 'GetBondType'):
-                _tmp.append((a, int(a2), offset, bond.GetBondType().name))
+            a2 = int(a2)
+            _tmp.append((a, a2, offset))
         bondpairs.extend(_tmp)
-    return bondpairs, rdkitmol
+
+    if revert_pbc:
+        UG = parse_to_graph(atoms, bondpairs)
+        dfs_edges = list(nx.dfs_edges(UG, source=0))
+        for (a, a2) in dfs_edges:
+            adjust_positions(atoms, a, a2)
+    rdkitmol = ase2rdkit(atoms, charge, ignore_bondorder)
+
+    bondpairs, rdkitmol = parse_bond_order(bondpairs, rdkitmol, atoms)
+    return atoms, bondpairs, rdkitmol
 
 
 def parse_to_graph(atoms, bondpairs, node_idxs=None):
+    if len(bondpairs)!=0:
+        nf_edge = len(bondpairs[0])
+    else:
+        nf_edge = 0
     G = nx.DiGraph()
+    ele_list = atoms.get_chemical_symbols()
     if isinstance(node_idxs, type(None)):
         G.add_nodes_from(np.arange(atoms.get_global_number_of_atoms()))
-        for (a, a2, offset, bondtype) in bondpairs:
-            G.add_edge(a, a2, bondtype=bondtype)
+        for i, (k, n) in enumerate(G.nodes.items()):
+            n['atomtype'] = ele_list[i]
+        if nf_edge in [4, 0]:
+            for (a, a2, offset, bondtype) in bondpairs:
+                G.add_edge(a, a2, bondtype=bondtype)
+        elif nf_edge == 3:
+            for (a, a2, offset) in bondpairs:
+                G.add_edge(a, a2)
     else:
         G.add_nodes_from(node_idxs)
-        for (a, a2, offset, bondtype) in bondpairs:
-            G.add_edge(node_idxs[a], node_idxs[a2], bondtype=bondtype)
+        for i, (k, n) in enumerate(G.nodes.items()):
+            n['atomtype'] = ele_list[i]
+        if nf_edge in [4, 0]:
+            for (a, a2, offset, bondtype) in bondpairs:
+                G.add_edge(node_idxs[a], node_idxs[a2], bondtype=bondtype)
+        elif nf_edge == 3:
+            for (a, a2, offset) in bondpairs:
+                G.add_edge(node_idxs[a], node_idxs[a2])
     UG = G.to_undirected()
     return UG
 
 
-def ase2graph(atoms, charge=None, ignore_bondorder=False, node_idxs=None):
-    bondpairs, rdkitmol = parse_bonds(atoms, charge, ignore_bondorder)
+def ase2graph(atoms, charge=None, ignore_bondorder=False, 
+              node_idxs=None, revert_pbc=False):
+    atoms, bondpairs, rdkitmol = parse_bonds(
+        atoms, charge, ignore_bondorder, revert_pbc)
     UG = parse_to_graph(atoms, bondpairs, node_idxs)
-    return UG, rdkitmol
+    return atoms, UG, rdkitmol
 
 
 def xyz2rdkit(xyz_f, charge=None, ignore_bondorder=False, node_idxs=None):
     atoms = sio.read(xyz_f, index='-1')
-    UG, rdkitmol = ase2graph(atoms, charge, ignore_bondorder, node_idxs)
+    atoms, UG, rdkitmol = ase2graph(atoms, charge, ignore_bondorder, node_idxs)
     return atoms, UG, rdkitmol
 
 
@@ -440,6 +507,21 @@ class MyEncoder(json.JSONEncoder):
         return json_repr
 
 
+def graph_difference(G, H):
+    # create new graph
+    R = nx.create_empty_copy(G)
+
+    if set(G) != set(H):
+        raise nx.NetworkXError("Node sets of graphs not equal")
+
+    edges = G.edges(data=True)
+    for e in edges:
+        if e not in H.edges(data=True):
+            a, a2, bt = e
+            R.add_edge(a, a2, bondtype=bt['bondtype'])
+    return R
+
+
 def get_rxn_statistics_df(rxn_history, config_id, save_fn=None):
     #sys.stdout = old_stdout
     idx = next(iter(rxn_history))
@@ -541,7 +623,7 @@ def plot_rxn_changed_mols(df, charge_dict={}, reverse=False):
     plt.rcParams["axes.unicode_minus"] = False
     plt.rcParams['mathtext.default'] = 'regular'
     a = 0.8
-    base_dict = {'Li': 1, 'PF6': -1}
+    base_dict = {'Li': 1, 'PF6': -1, 'oEC_radical_minus1_minus2': -1}
     _marker = ('o', '^', 's', 'D', '*', 'v', '>', '<')
     assert isinstance(charge_dict, dict)
     charge_dict.update(base_dict)
@@ -585,7 +667,7 @@ def plot_rxn_changed_mols(df, charge_dict={}, reverse=False):
             l = col[4:]
             nc = charge_dict[l] if l in charge_dict else 0
             pom, t, nl = parse_plt_label(l, nc)
-            ax1.errorbar(x, gb[col]['mean'], gb[col]['std'], ls='--', 
+            ax1.errorbar(x, gb[col]['mean'].values, gb[col]['std'].values, ls='--', 
                  marker=next(marker), alpha=a, label=nl, capsize=3)
     handles, labels = ax1.get_legend_handles_labels()
     # remove the errorbars
@@ -602,7 +684,7 @@ def plot_rxn_changed_mols(df, charge_dict={}, reverse=False):
             l = col[4:]
             nc = charge_dict[l] if l in charge_dict else 0
             pom, t, nl = parse_plt_label(l, nc)
-            ax2.errorbar(x, gb[col]['mean'], gb[col]['std'], ls='--', 
+            ax2.errorbar(x, gb[col]['mean'].values, gb[col]['std'].values, ls='--', 
                  marker=next(marker), alpha=a, label=nl, capsize=3)
     handles, labels = ax2.get_legend_handles_labels()
     # remove the errorbars
@@ -624,16 +706,15 @@ def run_cleaned_rxn(df, col='rxn'):
     first_run = True
     src_all = set(y for x in s.iloc[-1] for y in x.split(' => ')[0].split('+'))
     for i, rxn in enumerate(s.iloc[-1].copy()):
-        v_rxn_idx = (set((rxn,)) & s).values.nonzero()[0][0]
+        v_rxn_idx = (pd.Series([set((rxn,))]*len(s)) & s).values.nonzero()[0][0]
         flag[-1][i] = False if v_rxn_idx == s.index.max() else True
         src = set(rxn.split(' => ')[0].split('+'))
         for j in range(len(s)-1):
             for _rxn in s[j].copy():
-                if (j > v_rxn_idx) and (set(_rxn.split(
-                    ' => ')[0].split('+')) & src) != set():
+                _src = set(_rxn.split(' => ')[0].split('+'))
+                if (j > v_rxn_idx) and (_src & src) != set():
                     s[j].remove(_rxn)
                 if first_run:
-                    # _src = set(_rxn.split(' => ')[0].split('+'))
                     # if (_rxn in s[j]) and (src_all & _src) == set():
                     #     s[j].remove(_rxn)
                     if _rxn in rxn_lib:
@@ -654,26 +735,38 @@ def run_rxn_diff_df(df):
     for cn in col_list[:]:
         tmp = pd.DataFrame()
         tmp['forward'] = df[cn].diff(periods=1).fillna("").apply(set)
+        #tmp['forward'].iloc[0] = df[cn].iloc[0]
         tmp['backward'] = df[cn].diff(periods=-1).fillna("").apply(set).apply(lambda x: set(
             [y.replace('=>','<=') for y in x])).shift(1).fillna("").apply(set)
-        tmp['bilateral_diff'] = tmp.apply(lambda x:x[0] | x[1], axis=1)
-        tmp[cn+'_src'] = df[cn].apply(lambda rxn: set([y for x in rxn \
-                            for y in re.split(' => | <= ', x, 1)[0].split('+') if y != '']))
-        tmp[cn+'_bi_diff_src'] = tmp['bilateral_diff'].apply(lambda rxn: set([y for x in rxn \
-                            for y in re.split(' => | <= ', x, 1)[0].split('+') if y != '']))
-        def get_fleeet_rxn(x):
+        #tmp['backward'].iloc[-1] = df[cn].iloc[-1]
+        tmp['bilateral_diff'] = tmp.apply(lambda x:x.iloc[0] | x.iloc[1], axis=1)
+        tmp[cn+'_src'] = df[cn].apply(lambda rxn: set([
+            re.split(' => | <= ', x, 1)[0] for x in rxn]))
+        tmp[cn+'_bi_diff_src'] = tmp['bilateral_diff'].apply(lambda rxn: set([
+            re.split(' => | <= ', x, 1)[0] for x in rxn]))
+        def split_fake_rxn(x):
             y = x[cn+'_bi_diff_src']-tmp[cn+'_src'].iloc[-1]
             x[cn+'_transient'] = set(m for m in x['bilateral_diff'] for n in y 
                                     if n in re.split(' => | <= ', m, 1)[0])
             x[cn+'_diff'] = set(m for m in x['forward'] if m not in x[cn+'_transient'])
             return x
-        tmp = tmp.apply(get_fleeet_rxn, axis=1)
+        tmp = tmp.apply(split_fake_rxn, axis=1)
         df[cn+'_all_diff'] = tmp['forward']
         df[cn+'_all_rev_diff'] = tmp['backward']
         df[cn+'_all_bilateral_diff'] = tmp['bilateral_diff']
         df[cn+'_transient'] = tmp[cn+'_transient']
         df[cn+'_diff'] = tmp[cn+'_diff']
-        col_list += [cn+'_diff', cn+'_transient']
+        rxn_set = set()
+        new_rxn = []
+        for rxn in df[cn]:
+            _tmp = set()
+            for x in rxn:
+                if x not in rxn_set:
+                    rxn_set.add(x)
+                    _tmp.add(x)
+            new_rxn.append(_tmp)
+        df[cn+'_new'] = new_rxn
+        col_list += [cn+'_diff', cn+'_transient', cn+'_new']
 
     for cn in col_list[:]:
         df[cn+'_src'] = df[cn].apply(lambda rxn: set([y for x in rxn \
@@ -682,7 +775,7 @@ def run_rxn_diff_df(df):
                             for y in re.split(' => | <= ', x, 1)[1].split('+') if y != '']))
         col_list += [cn+'_src', cn+'_dst']
 
-    for cn in col_list[6:]:
+    for cn in col_list[16:]:
         df[cn+'_cnt'] = df[cn].apply(lambda x: len(x))
         col_list.append(cn+'_cnt')
     return df, col_list
@@ -704,132 +797,6 @@ def combine_rxn_diff_df(df_all):
         print(config_id, 'done!')
     df_new.reset_index(drop=True, inplace=True)
     return df_new
-
-
-def plot_rxn_timestep_hist(df, bins=25, show_fake_rxn=False, xrange=(0, 250)):
-    a = 0.7
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
-    X, L = [], []
-    rxn_idx = [i for i, x in zip(df.idx, df.rxn_diff_src) 
-               if x!=set() for y in x]
-    X.append(rxn_idx), L.append('rxn')
-    if show_fake_rxn:
-        fake_rxn_idx = [i for i, x in zip(df.idx, 
-                df.rxn_transient_src) if x!=set() for y in x]
-        X.append(fake_rxn_idx), L.append('transient_rxn')
-    ax1.hist(X, bins=bins, range=xrange, label=L, alpha=a, zorder=0, stacked=True)
-    ax1.set_title('Reaction', fontsize=14)
-    ax1.set_xlabel('Time step', fontsize=13)
-    ax1.set_ylabel('Frequency', fontsize=13)
-
-    X, L = [], []
-    rdc_idx = [i for i, x in zip(df.idx, df.rdc_diff_src) 
-               if x!=set() for y in x]
-    X.append(rdc_idx), L.append('rxn')
-    if show_fake_rxn:
-        fake_rdc_idx = [i for i, x in zip(df.idx, 
-                df.rdc_transient_src) if x!=set() for y in x]
-        X.append(fake_rdc_idx), L.append('transient_rxn')
-    ax2.hist(X, bins=bins, range=xrange, label=L, alpha=a, zorder=0, stacked=True)
-    ax2.set_title('Reduction', fontsize=14)
-    ax2.set_xlabel('Time step', fontsize=13)
-    ax2.set_ylabel('Frequency', fontsize=13)
-    if show_fake_rxn:
-        ax1.legend()
-        ax2.legend()
-    plt.show()
-
-
-def plot_rxn_timestep_hist_by_mols(df, bins=25, show_fake_rxn=False, 
-                                   xrange=(0, 250), charge_dict={}):
-    a = 0.7
-    base_dict = {'Li': 1, 'PF6': -1}
-    assert isinstance(charge_dict, dict)
-    charge_dict.update(base_dict)
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
-    mol_name = [x[7:] for x in df.columns if ('origin_' in x) and (x[7:]!='Li')]
-    def rxn_mol_cnt(x,  name):
-        src = [y.rsplit('_', 1)[0] for y in x.iloc[0]]
-        res = {'%s_%s_cnt'%(name,y): src.count(y) for y in mol_name}
-        return res
-
-    name = 'rxn_diff_src'
-    applied_df = df[['rxn_diff_src']].apply(rxn_mol_cnt, args=(name,), 
-                        axis='columns', result_type='expand')
-    df = pd.concat([df, applied_df], axis='columns')
-    X, L = [], []
-    for mn in mol_name:
-        mn_idx = [i for i, x in zip(df.idx, df['%s_%s_cnt'%(name, mn)]) 
-                       if x!=0 for y in range(x)]
-        nc = charge_dict[mn] if mn in charge_dict else 0
-        pom, t, nl = parse_plt_label(mn, nc)
-        X.append(mn_idx)
-        L.append(nl)
-    ax1.hist(X, bins=bins, range=xrange, label=L, alpha=a, stacked=True)
-    ax1.legend()
-    ax1.set_title('Reaction', fontsize=14)
-    ax1.set_xlabel('Time step', fontsize=13)
-    ax1.set_ylabel('Frequency', fontsize=13)
-
-    name = 'rdc_diff_src'
-    applied_df = df[['rdc_diff_src']].apply(rxn_mol_cnt, args=(name,), 
-                        axis='columns', result_type='expand')
-    df = pd.concat([df, applied_df], axis='columns')
-    X, L = [], []
-    for mn in mol_name:
-        mn_idx = [i for i, x in zip(df.idx, df['%s_%s_cnt'%(name, mn)]) 
-                       if x!=0 for y in range(x)]
-        nc = charge_dict[mn] if mn in charge_dict else 0
-        pom, t, nl = parse_plt_label(mn, nc)
-        X.append(mn_idx)
-        L.append(nl)
-    ax2.hist(X, bins=bins, range=xrange, label=L, alpha=a, stacked=True)
-    ax2.legend()
-    ax2.set_title('Reduction', fontsize=14)
-    ax2.set_xlabel('Time step', fontsize=13)
-    ax2.set_ylabel('Frequency', fontsize=13)
-    plt.show()
-
-    if show_fake_rxn:
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
-        name = 'transient_rxn_diff_src'
-        applied_df = df[['rxn_transient_src']].apply(rxn_mol_cnt, args=(name,), 
-                            axis='columns', result_type='expand')
-        df = pd.concat([df, applied_df], axis='columns')
-        X, L = [], []
-        for mn in mol_name:
-            mn_idx = [i for i, x in zip(df.idx, df['%s_%s_cnt'%(name, mn)]) 
-                           if x!=0 for y in range(x)]
-            nc = charge_dict[mn] if mn in charge_dict else 0
-            pom, t, nl = parse_plt_label(mn, nc)
-            X.append(mn_idx)
-            L.append(nl)
-        ax1.hist(X, bins=bins, range=xrange, label=L, alpha=a, stacked=True)
-        ax1.legend()
-        ax1.set_title('Transient Reaction', fontsize=14)
-        ax1.set_xlabel('Time step', fontsize=13)
-        ax1.set_ylabel('Frequency', fontsize=13)
-
-        name = 'transient_rdc_diff_src'
-        applied_df = df[['rdc_transient_src']].apply(rxn_mol_cnt, args=(name,), 
-                            axis='columns', result_type='expand')
-        df = pd.concat([df, applied_df], axis='columns')
-        X, L = [], []
-        for mn in mol_name:
-            mn_idx = [i for i, x in zip(df.idx, df['%s_%s_cnt'%(name, mn)]) 
-                           if x!=0 for y in range(x)]
-            nc = charge_dict[mn] if mn in charge_dict else 0
-            pom, t, nl = parse_plt_label(mn, nc)
-            X.append(mn_idx)
-            L.append(nl)
-        ax2.hist(X, bins=bins, range=xrange, label=L, alpha=a, stacked=True)
-        ax2.legend()
-        ax2.set_title('Transient Reduction', fontsize=14)
-        ax2.set_xlabel('Time step', fontsize=13)
-        ax2.set_ylabel('Frequency', fontsize=13)
-        plt.show()
-    return df
 
 
 def plot_rxn_cleaned_timestep_hist(df, bins=25, show_fake_rxn=False, xrange=(0, 250)):
@@ -873,7 +840,7 @@ def plot_rxn_cleaned_timestep_hist(df, bins=25, show_fake_rxn=False, xrange=(0, 
 def plot_rxn_cleaned_timestep_hist_by_mols(df, bins=25, show_fake_rxn=False, 
                                    xrange=(0, 250), charge_dict={}):
     a = 0.7
-    base_dict = {'Li': 1, 'PF6': -1}
+    base_dict = {'Li': 1, 'PF6': -1, 'oEC_radical_minus1_minus2': -1}
     assert isinstance(charge_dict, dict)
     charge_dict.update(base_dict)
 
@@ -925,8 +892,8 @@ def plot_rxn_cleaned_timestep_hist_by_mols(df, bins=25, show_fake_rxn=False,
 
     if show_fake_rxn:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
-        name = 'transient_rxn_cleaned_diff_src'
-        applied_df = df[['rxn_cleaned_transient_src']].apply(rxn_mol_cnt, args=(name,), 
+        name = 'transient_rxn_diff_src'
+        applied_df = df[['rxn_transient_src']].apply(rxn_mol_cnt, args=(name,), 
                             axis='columns', result_type='expand')
         df = pd.concat([df, applied_df], axis='columns')
         X, L = [], []
@@ -944,8 +911,8 @@ def plot_rxn_cleaned_timestep_hist_by_mols(df, bins=25, show_fake_rxn=False,
         ax1.set_xlabel('Time step', fontsize=13)
         ax1.set_ylabel('Frequency', fontsize=13)
 
-        name = 'transient_rdc_cleaned_diff_src'
-        applied_df = df[['rdc_cleaned_transient_src']].apply(rxn_mol_cnt, args=(name,), 
+        name = 'transient_rdc_diff_src'
+        applied_df = df[['rdc_transient_src']].apply(rxn_mol_cnt, args=(name,), 
                             axis='columns', result_type='expand')
         df = pd.concat([df, applied_df], axis='columns')
         X, L = [], []
@@ -964,4 +931,3 @@ def plot_rxn_cleaned_timestep_hist_by_mols(df, bins=25, show_fake_rxn=False,
         ax2.set_ylabel('Frequency', fontsize=13)
         plt.show()
     return df
-

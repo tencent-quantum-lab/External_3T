@@ -270,25 +270,4 @@ def run_model(model_3T, optimizers, block):
     for optimizer in optimizers:
         optimizer.zero_grad()
 
-##    with open(out_outE,'w') as f:
-##        for i in range(out_hist.shape[0]):
-##            f.write(str(out_hist[i])+'\n')
-
-    # We only add printout of the last xyz
-##    atoms = ase.Atoms(symbols=atom_elem, positions=xyz_hist[n_epoch])
-##    io.write(out_xyz, atoms, format='xyz', append=False)
-
-    # Use this section if we want to print out the entire minimization trajectory instead
-##    for i in range(xyz_hist.shape[0]):
-##        atoms = ase.Atoms(symbols=atom_elem, positions=xyz_hist[i])
-##        if i == 0: io.write(out_xyz, atoms, format='xyz', append=False)
-##        else: io.write(out_xyz, atoms, format='xyz', append=True)
-
     return
-
-#blocks = parse_config('configs/example_Li110_EC_DMC_VC_v1.json')
-#model = None
-#for block in blocks:
-#    model = create_model(block, base_model=model)
-#    optimizers = create_optimizers(model, block)
-#    run_model(model, optimizers, block)

@@ -1,29 +1,8 @@
-import sys
-sys.path.append('./utils/')
-sys.path.append('./utils/Convert_Gromacs_LAMMPS/')
-from run_utils import parse_config
-from run_utils import create_model
-from run_utils import create_optimizers
-from run_utils import run_model
-import torch
 import random
-import os
-import json
+import os, sys
+from main_run_utils import multiple_runs
 
-def main(config_json):
-    blocks = parse_config(config_json)
-    device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-    model = None
-    for block in blocks:
-        model = create_model(block, base_model=model).to(device)
-        optimizers = create_optimizers(model, block)
-        run_model(model, optimizers, block)
-
-for repeat in range(10):
-    # Read template
-    tag = 'Electrolyte_Reduction'
-    template = open('configs/'+tag+'_template.json','r').read()
-
+def config_modify_func(template):
     # Prepare random config file
     n_Li = str(random.randrange(2,9))
     n_VC = str(random.randrange(1,4))
@@ -41,22 +20,8 @@ for repeat in range(10):
             duplicate = False
     with open(config_json,'w') as f:
         f.write(config_str)
+    return config_json, config_str
 
-    # Execute
-    main(config_json)
 
-    # Store results
-    result_dir = 'results/' + tag + '/'
-    if not os.path.isdir(result_dir):
-        os.mkdir(result_dir)
-    result_dir = result_dir + config_json[:-5].split('_')[-1] + '/'
-    if not os.path.isdir(result_dir):
-        os.mkdir(result_dir)
-    os.system('mv FF_step* ' + result_dir)
-    os.system('mv VASP_step* ' + result_dir)
-    os.system('mv default.log ' + result_dir)
-    os.system('mv VASP_files ' + result_dir)
-    os.system('cp ' + config_json + ' ' + result_dir)
-    json_str = json.loads(config_str)
-    poscar_file = json_str[0]['lattice_poscar']['file']
-    os.system('cp ' + poscar_file + ' ' + result_dir)
+tag = 'Electrolyte_Reduction'
+multiple_runs(10, tag, config_modify_func)

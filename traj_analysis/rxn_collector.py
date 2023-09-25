@@ -9,6 +9,7 @@ import ase.io as sio
 from ase.data import covalent_radii
 from ase.neighborlist import NeighborList
 from ase.data import atomic_masses, chemical_symbols
+from ase.geometry import find_mic
 from networkx.algorithms import bipartite
 import networkx as nx
 from networkx.readwrite import json_graph
@@ -48,7 +49,20 @@ class RXNCollector(object):
         self.config_id = work_dir.split('/')[-1]
         self.working_xyz_name = None
         self.reset_mol_tpl()
-        self.preprocess()
+        if not os.path.isfile(self.work_dir + '/all_step.xyz'):
+            self.preprocess()
+
+    def _get_exclude_products(self):
+        self.exclude_product = dict()
+        exclude_dir = os.path.dirname(self.work_dir) + '/useful_items/exclude_products/'
+        if os.path.isdir(exclude_dir):
+            self.exclude_dir = exclude_dir
+            for fn in os.listdir(self.exclude_dir):
+                tmp = fn.split('-')
+                TPL_name, product_name = tmp[0], tmp[1]
+                product = sio.read(self.exclude_dir + fn, index='-1')
+                _atoms, UG, rdkitmol = ase2graph(product, revert_pbc=True)
+                self.exclude_product[(TPL_name, product_name)] = UG
 
     def reset_mol_tpl(self):
         config_json = glob.glob(self.work_dir + '/*.json')
@@ -96,10 +110,11 @@ class RXNCollector(object):
             _idx = _idx+NMol*N
         self.TPL_UGs, self.TPL_rdkitmols = [], []
         for atoms in self.TPL_MOLs:
-            UG, rdkitmol = ase2graph(atoms)
+            _atoms, UG, rdkitmol = ase2graph(atoms)
             self.TPL_UGs.append(UG)
             self.TPL_rdkitmols.append(rdkitmol)
         self.RXN_History = {}
+        self._get_exclude_products()
 
     def preprocess(self):
         ## Trajectory
@@ -132,7 +147,7 @@ class RXNCollector(object):
             atom_frame.pbc = [True, True, True]
         self.atom_frames = atom_frames
         self.refer_atoms = atom_frames[0]
-        UG, rdkitmol = ase2graph(self.refer_atoms)
+        _atoms, UG, rdkitmol = ase2graph(self.refer_atoms)
         self.refer_UG = UG
         return atom_frames
 
@@ -196,10 +211,11 @@ class RXNCollector(object):
         return changed_sub_atoms, changed_sub_graphs, changed_sub_rdkitmol, normal_sub_atoms
 
     def get_sub_atoms(self, atoms, sub_idxs):
-        _numbers = atoms.numbers[sub_idxs]
-        _positions = atoms.positions[sub_idxs]
-        _positions = _positions - _positions.mean(axis=0)
-        return ase.Atoms(numbers=_numbers, positions=_positions)
+        # _numbers = atoms.numbers[sub_idxs]
+        # _positions = atoms.positions[sub_idxs]
+        # _positions = _positions - _positions.mean(axis=0)
+        # return ase.Atoms(numbers=_numbers, positions=_positions)
+        return atoms[sub_idxs]
 
     def _print_changed_subgraph(self, changed_subgraph):
         for i, sg in enumerate(changed_subgraph):
@@ -211,16 +227,27 @@ class RXNCollector(object):
 
     def _is_TPL_MOL(self, atoms, sg, idx):
         '''Identify whether a subgraph corresponds to an unchanged TPL mol'''
+        node_match = lambda a1,a2: a1['atomtype'] == a2['atomtype']
         edge_match = lambda e1,e2: e1['bondtype'] == e2['bondtype']
         n_nodes = sg.number_of_nodes()
         node_idxs = np.sort(np.array(sg.nodes()))
         sub_atoms = self.get_sub_atoms(atoms, node_idxs)
+        sub_atoms, sub_UG, sub_rdkitmol = ase2graph(
+            sub_atoms, node_idxs=node_idxs, revert_pbc=True)
         sub_atoms.info['name'] = str(sub_atoms.symbols)
-        sub_UG, sub_rdkitmol = ase2graph(sub_atoms, node_idxs=node_idxs)
         if n_nodes in self.TPL_NAtoms_dict.keys():
             for TPL_idx in self.TPL_NAtoms_dict[n_nodes]:
+                TPL_name = list(self.TPL_CNT.keys())[TPL_idx]
+                kk = (TPL_name, str(sub_atoms.symbols))
+                if kk in self.exclude_product:
+                    exclude_UG = self.exclude_product[kk]
+                    GM = nx.isomorphism.GraphMatcher(sub_UG, exclude_UG, 
+                        node_match=node_match, edge_match=edge_match)
+                    if GM.is_isomorphic():
+                        return True, sub_atoms, sub_UG, sub_rdkitmol
                 TPL_UG = self.TPL_UGs[TPL_idx]
-                GM = nx.isomorphism.GraphMatcher(sub_UG, TPL_UG, edge_match=edge_match)
+                GM = nx.isomorphism.GraphMatcher(sub_UG, TPL_UG, 
+                        node_match=node_match, edge_match=edge_match)
                 if GM.is_isomorphic():
                     d_tpl = calculate_improper_dihedral_angle(self.TPL_rdkitmols[TPL_idx])
                     d_subg = calculate_improper_dihedral_angle(sub_rdkitmol)
@@ -237,27 +264,8 @@ class RXNCollector(object):
             return True, sub_atoms, sub_UG, sub_rdkitmol
         return False, sub_atoms, sub_UG, sub_rdkitmol
 
-    def rxn_detector(self, atom_frames, target_frame_idx=-1):
-        atoms = self.get_frame(atom_frames, target_frame_idx) # --> self.atoms
-        UG, rdkitmol = ase2graph(atoms)
-        RG1 = nx.difference(self.refer_UG, UG)
-        RG2 = nx.difference(UG, self.refer_UG)
-        csa, csg, csr, nsa = self.get_subgraph(atoms, UG)
-        self.changed_sub_atoms = csa
-        self.changed_sub_graphs = csg
-        self.changed_sub_rdkitmol = csr
-        self.normal_sub_atoms = nsa
-        if self.print_changed_subgraph>0:
-            self._print_changed_subgraph(csg)
-
+    def _get_pre_RXNs(self, csa, csg, nsa, target_frame_idx):
         _RXNs = set() # {(src, dst),(src, dst)} like
-        RXN_graph, RXNs, RXN_MOL_IDXs = nx.DiGraph(), [], {}
-        RXN_CNT = {'init': {}, 'rxn_changed': defaultdict(int), 
-                               'rdc_changed': defaultdict(int)}
-        RXN_CNT['init']['Li'] = len(self.TPL_IDXs['Li'])
-        for k, v in self.TPL_CNT.items():
-            if k != 'Li': RXN_CNT['init'][k] = v
-        sg_i, tpl_j = 0, 1
         TPL_IDXs_key = list(self.TPL_IDXs.keys())
         if self.save_rxn_result: # and target_frame_idx==-1:
             for sa in nsa:
@@ -284,6 +292,15 @@ class RXNCollector(object):
                     if node_idx in tpl_idx:
                         src_name = self.TPL_NAMES_FULL_LIST[tpl_j]
                         _RXNs.add((src_name, sg_name))
+        return _RXNs
+
+    def _get_RXNs_and_RXNGraph(self, _RXNs, csg, target_frame_idx):
+        RXN_graph, RXNs, RXN_MOL_IDXs = nx.DiGraph(), [], {}
+        RXN_CNT = {'init': {}, 'rxn_changed': defaultdict(int), 
+                               'rdc_changed': defaultdict(int)}
+        RXN_CNT['init']['Li'] = len(self.TPL_IDXs['Li'])
+        for k, v in self.TPL_CNT.items():
+            if k != 'Li': RXN_CNT['init'][k] = v
         for (src_name, sg_name) in _RXNs:
             RXN_graph.add_nodes_from([
                         (src_name, {'bipartite': 0, 'type': 'src'}), 
@@ -307,10 +324,28 @@ class RXNCollector(object):
             RXNs.append(_rxn)
         RXN_CNT['rxn_changed'] = dict(RXN_CNT['rxn_changed'])
         RXN_CNT['rdc_changed'] = dict(RXN_CNT['rdc_changed'])
-        graph_data = json_graph.node_link_data(RXN_graph) 
         m = 2 if target_frame_idx < 0 else 1
         RXN_MOL_IDXs = {k: np.array(csg[int(float(k.split('-')[m][2:]))].nodes
                         ).tolist() for rxn in RXNs for k in rxn['dst']}
+        return RXN_CNT, RXN_graph, RXNs, RXN_MOL_IDXs
+
+    def rxn_detector(self, atom_frames, target_frame_idx=-1):
+        atoms = self.get_frame(atom_frames, target_frame_idx) # --> self.atoms
+        atoms, UG, rdkitmol = ase2graph(atoms)
+        RG1 = graph_difference(self.refer_UG, UG)
+        RG2 = graph_difference(UG, self.refer_UG)
+        csa, csg, csr, nsa = self.get_subgraph(atoms, UG)
+        self.changed_sub_atoms = csa
+        self.changed_sub_graphs = csg
+        self.changed_sub_rdkitmol = csr
+        self.normal_sub_atoms = nsa
+        if self.print_changed_subgraph>0:
+            self._print_changed_subgraph(csg)
+
+        _RXNs = self._get_pre_RXNs(csa, csg, nsa, target_frame_idx)
+        RXN_CNT, RXN_graph, RXNs, RXN_MOL_IDXs = \
+            self._get_RXNs_and_RXNGraph(_RXNs, csg, target_frame_idx)
+        graph_data = json_graph.node_link_data(RXN_graph) 
 
         # get break_bonds distance
         eles = atoms.get_chemical_symbols()
@@ -338,7 +373,7 @@ class RXNCollector(object):
                         nb_flag = '%s%d@%s'%(eles[nb], nb, x)
                         b_in_rxn = True
                 if a_in_rxn and b_in_rxn:
-                    dist1 = round(atoms.get_distance(na, nb),4)
+                    dist1 = round(atoms.get_distance(na, nb, True),4)
                     dst_flag = (na_flag, nb_flag)
                     rxn['changed_bonds'].append((('%s%d'%(eles[na], na), '%s%d'%(eles[nb], nb)), 
                                                  (dist0, dist1), (src_flag, dst_flag)))

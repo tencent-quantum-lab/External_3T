@@ -8,7 +8,7 @@ def main(gro_file, topol_file, out_folder):
     Intermol_Convert = os.path.join(script_dir, 'InterMol/intermol/convert.py')
     os.system('echo "In py file"')
     os.system('echo '+Intermol_Convert)
-    os.system('python '+Intermol_Convert+' --gro_in '+gro_file+' '+topol_file+
+    os.system(sys.executable+' '+Intermol_Convert+' --gro_in '+gro_file+' '+topol_file+
               ' --lammps --odir '+out_folder)
     convert_input = os.path.join(out_folder, basename+'_converted.input')
     convert_lmp = os.path.join(out_folder, basename+'_converted.lmp')

@@ -8,3 +8,8 @@ bs4
 mechanize
 openbabel
 packmol
+networkx
+joblib
+matplotlib
+pandas
+scipy

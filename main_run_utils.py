@@ -9,6 +9,8 @@ import torch
 import random
 import os
 import json
+import traceback
+from datetime import datetime
 
 def main(config_json):
     blocks = parse_config(config_json)
@@ -23,13 +25,35 @@ def main(config_json):
 def multiple_runs(run_num, tag, config_modify_func):
     for repeat in range(run_num):
         # Read template
+        root_path = os.getcwd()
         template = open('configs/'+tag+'_template.json','r').read()
 
         # Prepare config file with desired number and type of input molecules
         config_json, config_str = config_modify_func(template)
-        
-        # Execute
-        main(config_json)
+        for iii in range(20):
+            print("Try %d times..."%iii)
+            os.chdir(root_path)
+            try:
+                # Execute
+                main(config_json)
+                now = datetime.now()
+                date_time = now.strftime("%Y-%m-%d, %H:%M:%S")
+                with open(os.path.join(root_path,'3TVASP_running.log'), 'a+') as f:
+                    f.write("==========================================\n")
+                    f.write(config_json+" NO.%d \n"%iii)
+                    f.write(date_time + " Done!\n")
+                break
+            except Exception as error:
+                now = datetime.now()
+                date_time = now.strftime("%Y-%m-%d, %H:%M:%S")
+                with open(os.path.join(root_path,'3TVASP_running.log'), 'a+') as f:
+                    f.write("==========================================\n")
+                    f.write(config_json+" NO.%d \n"%iii)
+                    f.write(traceback.format_exc())
+                    f.write("\n")
+                    f.write(date_time + " An exception occurred: " + repr(error) + "\n")
+                os.system('rm -rf FF_step* VASP_step* VASP_files/ default.log workspace/')
+                continue
 
         # Store results
         result_dir = 'results/' + tag + '/'

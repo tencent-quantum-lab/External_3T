@@ -9,6 +9,8 @@ from swiss_util import swiss_func
 from charmm2gromacs_util import chm2gmx_func
 from GL_data import data
 from process_molecule_utils import get_rotatable_bond, build_new_rotbond, cleanup_workspace, check_cache, store_cache
+from process_molecule_from_lmp import convert_molecule as convert_molecule_lmp
+
 
 def prelig4swiss(infile, outfile):
     outfile_0 = infile.replace('mol2', 'mol2')
@@ -107,6 +109,10 @@ def convert_gromacs_lammps_ligand(lig_itp, lig_prm, lig_gro, lig_top):
     return
 
 def convert_molecule(mol_xyz, override=None):
+    if '.lmp' == mol_xyz[-4:]:
+        mol_data = convert_molecule_lmp(mol_xyz, override)
+        return mol_data
+    
     mol_data = check_cache(mol_xyz)
 
     if mol_data is None:

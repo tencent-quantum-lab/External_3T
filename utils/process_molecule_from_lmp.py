@@ -6,6 +6,7 @@ from rdkit.Chem.Lipinski import RotatableBondSmarts
 from GL_data import data
 from xyz2mol import xyz2mol, read_xyz_file
 from process_molecule_utils import build_new_rotbond, cleanup_workspace, check_cache, store_cache
+import numpy as np
 
 def get_rotatable_bond(xyzfile, mol2file, outfile):
     try:

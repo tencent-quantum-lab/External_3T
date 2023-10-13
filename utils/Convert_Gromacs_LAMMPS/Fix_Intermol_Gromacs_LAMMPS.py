@@ -225,8 +225,10 @@ class Fix_LAMMPS:
         return sections
         
     def split_words(self,keyword,raw_lmp):
-        lines = raw_lmp.sections[keyword]
         new_lines = []
+        if keyword not in raw_lmp.sections:
+            return new_lines
+        lines = raw_lmp.sections[keyword]
         for i in range(len(lines)):
             #words = str.split(lines[i])
             words = str.split( lines[i].strip() )
@@ -234,8 +236,10 @@ class Fix_LAMMPS:
         return new_lines
 
     def strip_first_word(self,keyword,raw_lmp):
-        lines = raw_lmp.sections[keyword]
         new_lines = []
+        if keyword not in raw_lmp.sections:
+            return new_lines
+        lines = raw_lmp.sections[keyword]
         for i in range(len(lines)):
             #words = str.split(lines[i])
             words = str.split( lines[i].strip() )

@@ -28,7 +28,7 @@ def build_new_rotbond(lig_ori, lig_rotbond, converted_ligand_input, converted_li
         line = f.readline()
         while line:
             words = line.strip().split()
-            if len(words)==9:
+            if len(words)==9 or len(words)==10:
                 old_lig_pos.append([float(i) for i in words[2:5]])
             line = f.readline()
         old_lig_pos = np.array(old_lig_pos)

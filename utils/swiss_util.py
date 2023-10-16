@@ -34,7 +34,7 @@ def swiss_func(filename):
     br.set_handle_redirect(mechanize.HTTPRedirectHandler)
 
     # login fill-in form and submit
-    url = "http://www.swissparam.ch/"
+    url = "http://old.swissparam.ch/"
     response = br.open(url)
     br.form = list(br.forms())[0]
 

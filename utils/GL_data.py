@@ -3,6 +3,7 @@ import time
 
 class data:
     def __init__(self, in_file, data_file, rotbond_file=None):
+        self._parse_default()
         self.parse_in_file(in_file)
         self.parse_data_file(data_file)
         if rotbond_file is not None:
@@ -98,6 +99,26 @@ class data:
             content.append(words)
             line = fstream.readline()
         return content
+
+    def _parse_default(self):
+        self.bond_idx = np.array([])
+        self.angle_idx = np.array([])
+        self.dihedral_idx = np.array([])
+        self.improper_idx = np.array([])
+        self.bond_harmonic_idx = np.array([])
+        self.bond_harmonic_coeffs = np.array([])
+        self.angle_harmonic_idx = np.array([])
+        self.angle_harmonic_coeffs = np.array([])
+        self.angle_charmm_idx = np.array([])
+        self.angle_charmm_coeffs = np.array([])
+        self.dihedral_multiharm_idx = np.array([])
+        self.dihedral_multiharm_coeffs = np.array([])
+        self.dihedral_charmm_idx = np.array([])
+        self.dihedral_charmm_coeffs = np.array([])
+        self.improper_harmonic_idx = np.array([])
+        self.improper_harmonic_coeffs = np.array([])
+        self.rotbond_idx = np.array([])
+        return
 
     def _parse_masses(self, content):
         atom_mass = []

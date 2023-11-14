@@ -44,10 +44,11 @@ old_stdout = sys.stdout
 
 
 class RXNCollector(object):
-    def __init__(self, work_dir):
+    def __init__(self, work_dir, surface_idx=None):
         self.work_dir = work_dir
         self.config_id = work_dir.split('/')[-1]
         self.working_xyz_name = None
+        self.surface_idx = surface_idx
         self.reset_mol_tpl()
         if not os.path.isfile(self.work_dir + '/all_step.xyz'):
             self.preprocess()
@@ -113,6 +114,9 @@ class RXNCollector(object):
             _atoms, UG, rdkitmol = ase2graph(atoms)
             self.TPL_UGs.append(UG)
             self.TPL_rdkitmols.append(rdkitmol)
+        if not isinstance(self.surface_idx, type(None)): 
+            self.TPL_Surface_IDX = self.TPL_IDXs[
+                self.TPL_NAMES_FULL_LIST[self.surface_idx]]
         self.RXN_History = {}
         self._get_exclude_products()
 
@@ -196,12 +200,13 @@ class RXNCollector(object):
         atoms_new.positions[not_Li_idxs] = atoms.positions[not_Li_idxs] + shift
         return atoms_new
 
-    def get_subgraph(self, atoms, UG):
+    def get_subgraph(self, atoms, UG, _bondpairs_with_Li):
         self.subgraphs = list((UG.subgraph(c) for c in nx.connected_components(UG)))
         changed_sub_atoms, changed_sub_graphs, changed_sub_rdkitmol = [], [], []
         normal_sub_atoms = []
         for i, sg in enumerate(self.subgraphs):
-            flag, sub_atoms, sub_UG, sub_rdkitmol = self._is_TPL_MOL(atoms, sg, i)
+            flag, sub_atoms, sub_UG, sub_rdkitmol = self._is_TPL_MOL(
+                atoms, sg, i, _bondpairs_with_Li)
             if not flag:
                 changed_sub_atoms.append(sub_atoms)
                 changed_sub_graphs.append(sub_UG)
@@ -225,7 +230,16 @@ class RXNCollector(object):
                 if self.print_changed_subgraph == 2:
                     print("\tEdges:", sg.edges())
 
-    def _is_TPL_MOL(self, atoms, sg, idx):
+    def _check_rxn_on_surface(self, _bondpairs_with_Li, node_idxs):
+        if set(node_idxs).issubset(set(self.TPL_Surface_IDX)): return False
+        for i, j, _, bt in _bondpairs_with_Li:
+            if i in self.TPL_Surface_IDX and j in node_idxs:
+                return True
+            elif j in self.TPL_Surface_IDX and i in node_idxs:
+                return True
+        return False
+
+    def _is_TPL_MOL(self, atoms, sg, idx, _bondpairs_with_Li):
         '''Identify whether a subgraph corresponds to an unchanged TPL mol'''
         node_match = lambda a1,a2: a1['atomtype'] == a2['atomtype']
         edge_match = lambda e1,e2: e1['bondtype'] == e2['bondtype']
@@ -235,6 +249,10 @@ class RXNCollector(object):
         sub_atoms, sub_UG, sub_rdkitmol = ase2graph(
             sub_atoms, node_idxs=node_idxs, revert_pbc=True)
         sub_atoms.info['name'] = str(sub_atoms.symbols)
+        if not isinstance(self.surface_idx, type(None)): 
+            on_surface = self._check_rxn_on_surface(_bondpairs_with_Li, node_idxs)
+            if on_surface and '_@Surface' not in sub_atoms.info['name']:
+                sub_atoms.info['name'] += '_@Surface'
         if n_nodes in self.TPL_NAtoms_dict.keys():
             for TPL_idx in self.TPL_NAtoms_dict[n_nodes]:
                 TPL_name = list(self.TPL_CNT.keys())[TPL_idx]
@@ -331,10 +349,13 @@ class RXNCollector(object):
 
     def rxn_detector(self, atom_frames, target_frame_idx=-1):
         atoms = self.get_frame(atom_frames, target_frame_idx) # --> self.atoms
+        _bondpairs_with_Li = []
+        if not isinstance(self.surface_idx, type(None)): 
+             _, _bondpairs_with_Li, _ = parse_bonds(atoms, remove_Li=False)
         atoms, UG, rdkitmol = ase2graph(atoms)
         RG1 = graph_difference(self.refer_UG, UG)
         RG2 = graph_difference(UG, self.refer_UG)
-        csa, csg, csr, nsa = self.get_subgraph(atoms, UG)
+        csa, csg, csr, nsa = self.get_subgraph(atoms, UG, _bondpairs_with_Li)
         self.changed_sub_atoms = csa
         self.changed_sub_graphs = csg
         self.changed_sub_rdkitmol = csr
@@ -450,8 +471,9 @@ class RXNCollector(object):
 
 
 class RXNCollector_Factory(object):
-    def __init__(self, root_path):
+    def __init__(self, root_path, surface_idx=None):
         self.root_path = root_path
+        self.surface_idx = surface_idx
         self.RXN_Collectors = {}
         self.RXNs = {}
         self.logs = []
@@ -482,7 +504,7 @@ class RXNCollector_Factory(object):
     def _process(self, sub_dir, xyz_name='all_step.xyz', 
                  target_frame_idxs=-1, n_jobs=1, verbose=0):
         start_time = time.time()
-        rxn_collector = RXNCollector(sub_dir)
+        rxn_collector = RXNCollector(sub_dir, self.surface_idx)
         rxn_collector.process(xyz_name, target_frame_idxs, 
                               n_jobs=n_jobs,
                               verbose=verbose,

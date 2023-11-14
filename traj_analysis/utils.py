@@ -280,14 +280,14 @@ def adjust_positions(atoms, a0, a1):
         atoms.positions[a1] = atoms.positions[a0] + d
 
 
-def parse_bond_order(bondpairs, rdkitmol, atoms):
+def parse_bond_order(bondpairs, rdkitmol, atoms, remove_Li=True):
     _bondpairs = []
     for tmp in bondpairs:
         a, a2, _ = tmp
         bond = rdkitmol.GetBondBetweenAtoms(a, a2)
         if hasattr(bond, 'GetBondType'):
             bond_type = bond.GetBondType().name
-        elif 3 in atoms.numbers[[a, a2]]:
+        elif remove_Li and 3 in atoms.numbers[[a, a2]]:
             bond_type = None
         else:
             bond_type = 'SINGLE'
@@ -312,10 +312,12 @@ def parse_bond_order(bondpairs, rdkitmol, atoms):
     return _bondpairs, rdkitmol
 
 
-def parse_bonds(atoms, charge=None, ignore_bondorder=False, revert_pbc=False):
+def parse_bonds(atoms, charge=None, ignore_bondorder=False, 
+                revert_pbc=False, remove_Li=True):
     radius = 1.20
     cutoffs = radius * covalent_radii[atoms.numbers]
-    cutoffs[(atoms.numbers == 3).nonzero()[0]] = 0
+    if remove_Li:
+        cutoffs[(atoms.numbers == 3).nonzero()[0]] = 0
     nl = NeighborList(cutoffs=cutoffs, skin=0.0, 
                       self_interaction=False, sorted=True)
     nl.update(atoms)
@@ -336,7 +338,7 @@ def parse_bonds(atoms, charge=None, ignore_bondorder=False, revert_pbc=False):
             adjust_positions(atoms, a, a2)
     rdkitmol = ase2rdkit(atoms, charge, ignore_bondorder)
 
-    bondpairs, rdkitmol = parse_bond_order(bondpairs, rdkitmol, atoms)
+    bondpairs, rdkitmol = parse_bond_order(bondpairs, rdkitmol, atoms, remove_Li)
     return atoms, bondpairs, rdkitmol
 
 
@@ -931,3 +933,74 @@ def plot_rxn_cleaned_timestep_hist_by_mols(df, bins=25, show_fake_rxn=False,
         ax2.set_ylabel('Frequency', fontsize=13)
         plt.show()
     return df
+
+
+def get_product_graph(work_path, config_id, rxn, last_idx=249):
+    rxn = re.sub('_[\d]+', '', rxn)
+    srcs, pdts = rxn.split(' => ')
+    pdts_name = pdts.split('+')
+
+    pdts_graph = dict()
+    _pdts_name = set()
+    _surface_flag = False
+    for pdt in pdts_name:
+        atoms = sio.read(work_path+config_id+r'/rxn_analysis_result/frame(149)-%s.xyz'%(
+            last_idx, pdt), do_not_split_by_at_sign=True)
+        atoms, UG, rdkitmol = ase2graph(atoms)
+        if '_@Surface' in pdt: 
+            pdt = re.sub('_@Surface', '', pdt)
+            _surface_flag = True
+        pdt = re.sub('sg[\d]+-', '', pdt)
+        pdts_graph[pdt] = UG
+        _pdts_name.add(pdt)
+    _pdts = '+'.join(_pdts_name)
+    rxn = srcs + ' => ' + _pdts
+    return pdts_graph, rxn, _surface_flag
+
+
+def check_isomorphic(old_UG, new_UG):
+    node_match = lambda a1,a2: a1['atomtype'] == a2['atomtype']
+    edge_match = lambda e1,e2: e1['bondtype'] == e2['bondtype']
+    GM = nx.isomorphism.GraphMatcher(old_UG, new_UG, 
+                        node_match=node_match, edge_match=edge_match)
+    return True if GM.is_isomorphic() else False
+
+
+def get_unique_rxns(work_path, df_new_last, last_idx=249):
+    rxn_dict, pdts_graph = dict(), dict()
+    rxn_bulk_list, rxn_surface_list = [], []
+    ascii_letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    _idx = 0
+    for config_id, rxns in zip(df_new_last.config_id, df_new_last.rxn_wt_pid):
+        rxn_bulk, rxn_surface= [], []
+        os.chdir(work_path)
+        for rxn in rxns:
+            if 'Li' in rxn:
+                continue
+            _pdts_graph, rxn, _surface_flag = get_product_graph(work_path, config_id, rxn, last_idx)
+
+            for pdt, UG in _pdts_graph.items():
+                if pdt in pdts_graph:
+                    old_UG = pdts_graph[pdt]
+                    if not check_isomorphic(old_UG, UG):
+                        _tmp = re.findall('_([\d]+)', pdt)
+                        old_n = int(_tmp[-1]) if _tmp else 0
+                        pdt_ = pdt+'_'+str(old_n)
+                        pdts_graph[pdt_] = UG
+                        rxn = re.sub(pdt, pdt_, rxn)
+                else:
+                    pdts_graph[pdt] = UG
+
+            if rxn not in rxn_dict:
+                rxn_dict[rxn] = ascii_letters[_idx]
+                _idx += 1
+                assert _idx < len(ascii_letters), 'The number of rxn is beyond 52, please use other style of index'
+
+            if _surface_flag:
+                rxn_surface.append(rxn_dict[rxn])
+            else:
+                rxn_bulk.append(rxn_dict[rxn])
+        rxn_surface_list.append(''.join(rxn_surface))
+        rxn_bulk_list.append(''.join(rxn_bulk))
+
+    return rxn_dict, rxn_bulk_list, rxn_surface_list

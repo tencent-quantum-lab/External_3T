@@ -9,6 +9,8 @@ import ase
 import ase.io as io
 import time
 import numpy as np
+from ase.data import atomic_masses, chemical_symbols
+
 
 def parse_config(config_json):
     blocks = json.load(open(config_json,'r'))
@@ -71,7 +73,8 @@ def pack_molecules(lattice_data, molecules_data):
     os.chdir(temp_dir)
     os.system('rm -r *')
 
-    mass_elem_dict = {1:'H', 7:'Li', 12:'C', 16:'O', 19:'F', 31:'P'}
+    #mass_elem_dict = {1:'H', 7:'Li', 12:'C', 16:'O', 19:'F', 31:'P'}
+    mass_elem_dict = {round(atomic_masses[i]): chemical_symbols[i] for i in range(len(chemical_symbols)) if i!=0}
     with open('pack_in.inp', 'w') as f:
         f.write('tolerance 2.0\n')
         f.write('filetype xyz\n')
@@ -153,14 +156,39 @@ def create_model(block, base_model=None):
                                    PWMAT_template = block['lattice_poscar']['PWMAT_template'])
     # Build molecules data
     molecules_data = []
+    replace_idxs = []
+    origin_files = []
+    idx = 1
     for moldict in block['molecule_xyz']:
+        mol_fn = moldict['file']
+        if 'replace_on_FF' in moldict:
+            origin_files+=[moldict['file']]*moldict['count']
+            mol_fn = moldict['replace_on_FF']
+            replace_idxs+=list(range(idx, idx+moldict['count']))
         for i in range(moldict['count']):
-            molecule_data = convert_molecule(moldict['file'],
+            molecule_data = convert_molecule(mol_fn,
                                              override = moldict['override'])
             molecules_data.append( molecule_data )
+        idx += moldict['count']
     pack_molecules(lattice_data, molecules_data)    # this will change molecules_data coordinates
     # Build model
     model = PotentialModel(lattice_data, molecules_data, block['mode'])
+    if len(replace_idxs)!=0 and block['mode'] == 'VASP':
+        for ridx, fn in zip(replace_idxs, origin_files):
+            suffix = fn.split('.')[-1]
+            if suffix == 'xyz':
+                atoms = io.read(fn, index='-1')
+            elif suffix == 'lmp':
+                atoms = sio.read(fn, format='lammps-data', index='-1')
+                new_atom_nums = [np.where(np.abs(atomic_masses-x)<1e-5)[0][0] 
+                                 for x in atoms.get_masses()]
+                atoms.set_atomic_numbers(new_atom_nums)
+            _idx = model.atom_type[model.atom_molid==ridx].tolist()
+            unique_idx = sorted(set(_idx), key=_idx.index)
+            new_mass = atomic_masses[atoms.get_atomic_numbers()].tolist()
+            unique_mass = sorted(set(new_mass), key=new_mass.index)
+            assert len(unique_idx) == len(unique_mass)
+            model.atom_mass[unique_idx] = torch.tensor(unique_mass)
     if not (base_model is None):
         # Replace coordinates with those of base_model
         old_atom_pos = base_model.atom_pos.detach().cpu()
@@ -216,10 +244,12 @@ def run_model(model_3T, optimizers, block):
     schedulers = None
 
     # determine atom elements for printing convenience later on
-    mass_elem_dict = {1:'H', 7:'Li', 9:'Be', 11:'B', 12:'C', 14:'N', 16:'O', 19:'F',
-                    23:'Na', 24:'Mg', 27:'Al', 28:'Si', 31:'P', 32:'S', 35:'Cl',
-                    39:'K', 40:'Ca', 70:'Ga', 73:'Ge', 75:'As', 79:'Se', 80:'Br',
-                    85:'Rb', 88:'Sr', 115:'In', 119:'Sn', 122:'Sb', 128:'Te', 127:'I', 207:'Pb'} # this is rounded mass to elem format
+    #mass_elem_dict = {1:'H', 7:'Li', 9:'Be', 11:'B', 12:'C', 14:'N', 16:'O', 19:'F',
+    #                23:'Na', 24:'Mg', 27:'Al', 28:'Si', 31:'P', 32:'S', 35:'Cl',
+    #                39:'K', 40:'Ca', 70:'Ga', 73:'Ge', 75:'As', 79:'Se', 80:'Br',
+    #                85:'Rb', 88:'Sr', 115:'In', 119:'Sn', 122:'Sb', 128:'Te', 127:'I', 207:'Pb'} 
+    mass_elem_dict = {round(atomic_masses[i]): chemical_symbols[i] for i in range(len(chemical_symbols)) if i!=0}
+    # this is rounded mass to elem format
     atom_type = model_3T.atom_type.cpu().detach().numpy().astype(int) # this is already in 0 to n_type-1 format
     temp = model_3T.atom_mass.detach().cpu().numpy().astype(float)
     type_elem_dict = {}

@@ -10,6 +10,7 @@ from charmm2gromacs_util import chm2gmx_func
 from GL_data import data
 from process_molecule_utils import get_rotatable_bond, build_new_rotbond, cleanup_workspace, check_cache, store_cache
 from process_molecule_from_lmp import convert_molecule as convert_molecule_lmp
+from ase.data import chemical_symbols
 
 
 def prelig4swiss(infile, outfile):
@@ -25,9 +26,10 @@ def prelig4swiss(infile, outfile):
     block = [x.split('\t') for x in block]
 
     block_new = []
-    atom_count = {'C':1, 'N':1, 'O':1, 'S':1, 'P':1, 'F':1, 'Br':1, 'Cl':1, 'I': 1,   
-                  'Li':1, 'Na':1, 'K':1, 'Mg':1, 'Al':1, 'Si':1,
-                  'Ca':1, 'Cr':1, 'Mn':1, 'Fe':1, 'Co':1, 'Cu':1}
+    #atom_count = {'C':1, 'N':1, 'O':1, 'S':1, 'P':1, 'F':1, 'Br':1, 'Cl':1, 'I': 1,   
+    #              'Li':1, 'Na':1, 'K':1, 'Mg':1, 'Al':1, 'Si':1,
+    #              'Ca':1, 'Cr':1, 'Mn':1, 'Fe':1, 'Co':1, 'Cu':1, 'B':1}
+    atom_count = {x: 1 for x in chemical_symbols if x not in ['X', 'H']}
     for i in block:
         at = i[1].strip()
         if 'H' not in at:

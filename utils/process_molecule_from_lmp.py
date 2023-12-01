@@ -7,6 +7,8 @@ from GL_data import data
 from xyz2mol import xyz2mol, read_xyz_file
 from process_molecule_utils import build_new_rotbond, cleanup_workspace, check_cache, store_cache
 import numpy as np
+from ase.data import chemical_symbols, atomic_masses
+
 
 def get_rotatable_bond(xyzfile, mol2file, outfile):
     try:
@@ -94,7 +96,8 @@ def split_lmp_data_file(data_file, converted_ligand_input, converted_ligand_data
 
     def _dump_rotbond_file(data_content, rotbond_filename):
         type_elem_dict = {}
-        mass_dict = {1:'H', 7:'Li', 12:'C', 14:'N', 16:'O', 19:'F', 31:'P', 127:'I', 207:'Pb'}
+        #mass_dict = {1:'H', 7:'Li', 12:'C', 14:'N', 16:'O', 19:'F', 31:'P', 127:'I', 207:'Pb'}
+        mass_dict = {round(atomic_masses[i]): chemical_symbols[i] for i in range(len(chemical_symbols)) if i!=0}
         for i in range(len(data_content)):
             if data_content[i][0] == 'Masses':
                 masses_content = data_content[i][1]

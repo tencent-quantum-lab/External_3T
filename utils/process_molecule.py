@@ -30,6 +30,7 @@ def prelig4swiss(infile, outfile):
     #              'Li':1, 'Na':1, 'K':1, 'Mg':1, 'Al':1, 'Si':1,
     #              'Ca':1, 'Cr':1, 'Mn':1, 'Fe':1, 'Co':1, 'Cu':1, 'B':1}
     atom_count = {x: 1 for x in chemical_symbols if x not in ['X', 'H']}
+    atom_count.update({x.upper(): 1 for x in chemical_symbols if x not in ['X', 'H']})
     for i in block:
         at = i[1].strip()
         if 'H' not in at:

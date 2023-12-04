@@ -148,6 +148,17 @@ def pack_molecules(lattice_data, molecules_data):
     return
     
 
+def get_order_list(atoms):
+    elem_set = sorted(set(atoms.get_chemical_symbols()), 
+                      key=atoms.get_chemical_symbols().index)
+    new_order = []
+    for elem in elem_set:
+        for i in range(len(atoms)):
+            if elem == atoms.get_chemical_symbols()[i]:
+                new_order.append(i)
+    return new_order
+
+
 def create_model(block, base_model=None):
     # Build lattice data
     lattice_data = convert_lattice(block['lattice_poscar']['file'],
@@ -183,12 +194,14 @@ def create_model(block, base_model=None):
                 new_atom_nums = [np.where(np.abs(atomic_masses-x)<1e-5)[0][0] 
                                  for x in atoms.get_masses()]
                 atoms.set_atomic_numbers(new_atom_nums)
+            atoms = atoms[get_order_list(atoms)]
             _idx = model.atom_type[model.atom_molid==ridx].tolist()
             unique_idx = sorted(set(_idx), key=_idx.index)
-            new_mass = atomic_masses[atoms.get_atomic_numbers()].tolist()
-            unique_mass = sorted(set(new_mass), key=new_mass.index)
-            assert len(unique_idx) == len(unique_mass)
-            model.atom_mass[unique_idx] = torch.tensor(unique_mass)
+            unique_idx_pos = [_idx.index(x) for x in unique_idx]
+            new_mass = atomic_masses[atoms.get_atomic_numbers()]
+            unique_mass = new_mass.take(unique_idx_pos)
+            model.atom_mass[unique_idx] = torch.tensor(unique_mass, 
+                    dtype=model.atom_mass.dtype, device=model.atom_mass.device)
     if not (base_model is None):
         # Replace coordinates with those of base_model
         old_atom_pos = base_model.atom_pos.detach().cpu()

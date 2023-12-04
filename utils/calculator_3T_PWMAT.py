@@ -29,7 +29,7 @@ def calc_E_F_PWMAT(model):
     return E_total, F_atoms
 
 def create_ase_obj(model):
-    mass_dict = {1:'H', 7:'Li', 12:'C', 14:'N', 16:'O', 19:'F', 31:'P', 127:'I', 207:'Pb'}
+    #mass_dict = {1:'H', 7:'Li', 12:'C', 14:'N', 16:'O', 19:'F', 31:'P', 127:'I', 207:'Pb'}
     mass_dict = {round(atomic_masses[i]): chemical_symbols[i] for i in range(len(chemical_symbols)) if i!=0}
     ori_atom_pos = model.atom_pos.detach().cpu().numpy()
     cell = model.cell.detach().cpu().numpy()

@@ -24,7 +24,7 @@ from rdkit import Chem
 from rdkit.Chem import rdDetermineBonds, rdMolTransforms
 from rdkit.Chem.Draw import IPythonConsole
 
-from .utils import ase2graph, calculate_improper_dihedral_angle
+from .utils import ase2graph, calculate_improper_dihedral_angle, graph_difference
 from .utils import MyEncoder, NoIndent, dict_update, combine_rxn_statistics_df
 
 IPythonConsole.drawOptions.addAtomIndices = True
